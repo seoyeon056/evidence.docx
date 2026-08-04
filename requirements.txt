@@ -1,0 +1,12 @@
+torch
+transformers
+peft
+bitsandbytes
+accelerate
+datasets
+trl
+langgraph
+langchain-core
+sentence-transformers
+gradio
+python-dotenv
