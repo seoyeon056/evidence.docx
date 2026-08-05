@@ -17,6 +17,13 @@ from pathlib import Path
 # torch import 전에 설정해야 CUDA 할당자에 반영됨 - 단편화로 인한 OOM 완화
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+# Kaggle 이미지의 accelerate 기본 설정(~/.cache/huggingface/accelerate/default_config.yaml
+# 등)이 mixed_precision=bf16으로 되어 있으면 SFTConfig(fp16=True)를 줘도 Trainer
+# 내부의 Accelerator.prepare()가 트레이너블 파라미터를 다시 bf16으로 되돌려서,
+# LoRA 가중치를 fp16으로 직접 캐스팅해도 GradScaler가 "not implemented for
+# BFloat16"로 계속 터짐. Accelerate가 이 환경변수를 최우선으로 보므로 여기서 강제.
+os.environ["ACCELERATE_MIXED_PRECISION"] = "fp16"
+
 import torch
 from datasets import Dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
