@@ -64,14 +64,17 @@ def main() -> None:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
+        # T4는 Turing(SM75) - fp16 텐서 코어는 있지만 bf16 텐서 코어는 없음(Ampere
+        # 이상부터). bf16으로 돌렸을 때 텐서 코어 가속을 못 받아 3시간에 36%로
+        # 지나치게 느렸음 - fp16으로 되돌림.
+        bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_use_double_quant=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         quantization_config=bnb_config,
         device_map="auto",
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
     )
     model.config.use_cache = False
     model = prepare_model_for_kbit_training(model)
@@ -87,6 +90,15 @@ def main() -> None:
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
+    # torch_dtype=float16을 from_pretrained에 넘겨도 PEFT가 새로 만드는 LoRA
+    # A/B 가중치는 기본적으로 fp32/bf16으로 남는 경우가 있어서(정확한 원인은
+    # 라이브러리 버전마다 다름), fp16 학습 시 GradScaler가
+    # "not implemented for BFloat16"로 계속 죽었음. 학습 가능한(=LoRA) 파라미터만
+    # 골라서 명시적으로 fp16으로 캐스팅해 원천 차단.
+    for param in model.parameters():
+        if param.requires_grad and param.dtype != torch.float16:
+            param.data = param.data.to(torch.float16)
+
     dataset = build_dataset(tokenizer).train_test_split(test_size=0.05, seed=42)
 
     sft_config = SFTConfig(
@@ -98,12 +110,7 @@ def main() -> None:
         # 부족하면 여기를 늘려 재학습 (트레이드오프는 README 참고).
         num_train_epochs=1,
         learning_rate=2e-4,
-        # fp16으로 시도했으나 Kaggle 환경(accelerate 기본 설정으로 추정)에서 LoRA
-        # 가중치 일부가 계속 bf16으로 남아 GradScaler.unscale_에서
-        # "not implemented for BFloat16"로 반복 실패. bf16은 loss scaling이
-        # 필요 없어 GradScaler 자체를 안 써서 이 문제를 원천적으로 피함.
-        # T4엔 bf16 텐서 코어가 없어 fp16보다 다소 느리지만 안정성 우선.
-        bf16=True,
+        fp16=True,  # T4 텐서 코어 가속 (bf16은 위 캐스팅 없이는 GradScaler와 충돌, 게다가 느림)
         optim="paged_adamw_8bit",  # 8bit 페이지드 옵티마이저로 메모리 여유 확보
         logging_steps=20,
         # epoch당으로 하면 1 에폭 학습 중엔 체크포인트가 하나도 안 남아서, 세션이
