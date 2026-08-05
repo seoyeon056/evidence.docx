@@ -62,4 +62,8 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-데이터 다운로드는 `src/data/download.py` 참고.
+```bash
+python -m src.data.download        # ACI-Bench, MTS-Dialog, PLABA
+python -m src.data.preprocess       # 멀티태스크 instruction 포맷으로 병합
+python -m src.training.train_qlora  # QLoRA 파인튜닝 (GPU 필요)
+```
