@@ -69,7 +69,12 @@ def main() -> None:
         bnb_4bit_use_double_quant=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME, quantization_config=bnb_config, device_map="auto"
+        MODEL_NAME,
+        quantization_config=bnb_config,
+        device_map="auto",
+        # 명시 안 하면 체크포인트 기본값(bfloat16)을 따라가서, LoRA 어댑터 가중치가
+        # bf16으로 생성되고 fp16 GradScaler가 이를 처리 못해 학습 첫 step에서 터짐.
+        torch_dtype=torch.float16,
     )
     model.config.use_cache = False
     model = prepare_model_for_kbit_training(model)
