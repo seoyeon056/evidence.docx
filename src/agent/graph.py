@@ -9,6 +9,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from src.agent.state import AgentState
+from src.agent.verify import ENTAILMENT_THRESHOLD, entailment_score
 
 
 def generate_soap_note(state: AgentState) -> AgentState:
@@ -22,9 +23,16 @@ def extract_claims(state: AgentState) -> AgentState:
 
 
 def verify_claims(state: AgentState) -> AgentState:
-    # TODO(3주차): NLI 모델로 각 claim이 원본 대화에 entailment 되는지 판별
-    # 임계값 미만인 claim은 state["weak_claims"]에 채움
-    raise NotImplementedError
+    dialogue = state["dialogue"]
+    weak_claims = []
+    for claim in state["claims"]:
+        score = entailment_score(dialogue, claim["text"])
+        claim["entailment_score"] = score
+        claim["verified"] = score >= ENTAILMENT_THRESHOLD
+        if not claim["verified"]:
+            weak_claims.append(claim)
+    state["weak_claims"] = weak_claims
+    return state
 
 
 def human_review(state: AgentState) -> AgentState:
