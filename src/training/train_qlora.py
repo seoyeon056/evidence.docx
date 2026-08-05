@@ -106,8 +106,13 @@ def main() -> None:
         bf16=True,
         optim="paged_adamw_8bit",  # 8bit 페이지드 옵티마이저로 메모리 여유 확보
         logging_steps=20,
-        save_strategy="epoch",
-        eval_strategy="epoch",
+        # epoch당으로 하면 1 에폭 학습 중엔 체크포인트가 하나도 안 남아서, 세션이
+        # 끊기면 진행분이 통째로 날아감 - steps 기준으로 자주 저장해 재개 가능하게 함
+        save_strategy="steps",
+        save_steps=20,
+        save_total_limit=3,
+        eval_strategy="steps",
+        eval_steps=20,
         # loss_type="nll"(청크 없이 한 번에 logits 계산)이라 seq_len x 15만 vocab
         # 텐서가 그대로 메모리에 올라감 - 3072에서 OOM 나서 2048로 낮춤
         # (p90=937 토큰까지 커버, 전체의 98.1%가 안 잘림).
@@ -129,7 +134,9 @@ def main() -> None:
         processing_class=tokenizer,
     )
 
-    trainer.train()
+    # OUTPUT_DIR에 체크포인트가 이미 있으면(세션 끊김 후 재실행 등) 그 지점부터 재개
+    has_checkpoint = OUTPUT_DIR.exists() and any(OUTPUT_DIR.glob("checkpoint-*"))
+    trainer.train(resume_from_checkpoint=has_checkpoint)
     trainer.save_model(str(OUTPUT_DIR / "final"))
     tokenizer.save_pretrained(str(OUTPUT_DIR / "final"))
 
