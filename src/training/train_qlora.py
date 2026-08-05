@@ -116,8 +116,11 @@ def main() -> None:
         save_strategy="steps",
         save_steps=20,
         save_total_limit=3,
-        eval_strategy="steps",
-        eval_steps=20,
+        # Trainer 내부 실행 순서가 로그 -> 평가 -> 저장이라, eval이 크래시하면
+        # 그 스텝의 저장 자체가 실행되지 않음(실제로 step 20 eval이 OOM 나면서
+        # checkpoint-20이 아예 안 만들어진 것으로 확인). 지금은 학습 손실만으로도
+        # 충분히 모니터링되니 eval을 꺼서 저장이 eval에 발목 잡히지 않게 함.
+        eval_strategy="no",
         # loss_type="nll"(청크 없이 한 번에 logits 계산)이라 seq_len x 15만 vocab
         # 텐서가 그대로 메모리/연산량에 올라감 - 1536이면 96.5% 예시가 안 잘림.
         max_length=1536,
