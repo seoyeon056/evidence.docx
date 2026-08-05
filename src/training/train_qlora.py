@@ -64,17 +64,14 @@ def main() -> None:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        # T4는 Turing(Compute Capability 7.5)이라 bf16 텐서 코어가 없음 - fp16 사용
-        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_use_double_quant=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         quantization_config=bnb_config,
         device_map="auto",
-        # 명시 안 하면 체크포인트 기본값(bfloat16)을 따라가서, LoRA 어댑터 가중치가
-        # bf16으로 생성되고 fp16 GradScaler가 이를 처리 못해 학습 첫 step에서 터짐.
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
     )
     model.config.use_cache = False
     model = prepare_model_for_kbit_training(model)
@@ -99,7 +96,12 @@ def main() -> None:
         gradient_checkpointing=True,
         num_train_epochs=3,
         learning_rate=2e-4,
-        fp16=True,  # T4엔 bf16 텐서 코어가 없어 fp16 사용
+        # fp16으로 시도했으나 Kaggle 환경(accelerate 기본 설정으로 추정)에서 LoRA
+        # 가중치 일부가 계속 bf16으로 남아 GradScaler.unscale_에서
+        # "not implemented for BFloat16"로 반복 실패. bf16은 loss scaling이
+        # 필요 없어 GradScaler 자체를 안 써서 이 문제를 원천적으로 피함.
+        # T4엔 bf16 텐서 코어가 없어 fp16보다 다소 느리지만 안정성 우선.
+        bf16=True,
         optim="paged_adamw_8bit",  # 8bit 페이지드 옵티마이저로 메모리 여유 확보
         logging_steps=20,
         save_strategy="epoch",
