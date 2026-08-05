@@ -94,7 +94,9 @@ def main() -> None:
         per_device_train_batch_size=1,
         gradient_accumulation_steps=16,
         gradient_checkpointing=True,
-        num_train_epochs=3,
+        # 1 에폭 = 파이프라인이 끝까지 도는지 먼저 확인하는 용도. 결과물 품질이
+        # 부족하면 여기를 늘려 재학습 (트레이드오프는 README 참고).
+        num_train_epochs=1,
         learning_rate=2e-4,
         # fp16으로 시도했으나 Kaggle 환경(accelerate 기본 설정으로 추정)에서 LoRA
         # 가중치 일부가 계속 bf16으로 남아 GradScaler.unscale_에서
