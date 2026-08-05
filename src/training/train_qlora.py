@@ -17,13 +17,6 @@ from pathlib import Path
 # torch import 전에 설정해야 CUDA 할당자에 반영됨 - 단편화로 인한 OOM 완화
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-# Kaggle 이미지의 accelerate 기본 설정(~/.cache/huggingface/accelerate/default_config.yaml
-# 등)이 mixed_precision=bf16으로 되어 있으면 SFTConfig(fp16=True)를 줘도 Trainer
-# 내부의 Accelerator.prepare()가 트레이너블 파라미터를 다시 bf16으로 되돌려서,
-# LoRA 가중치를 fp16으로 직접 캐스팅해도 GradScaler가 "not implemented for
-# BFloat16"로 계속 터짐. Accelerate가 이 환경변수를 최우선으로 보므로 여기서 강제.
-os.environ["ACCELERATE_MIXED_PRECISION"] = "fp16"
-
 import torch
 from datasets import Dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -71,17 +64,14 @@ def main() -> None:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        # T4는 Turing(SM75) - fp16 텐서 코어는 있지만 bf16 텐서 코어는 없음(Ampere
-        # 이상부터). bf16으로 돌렸을 때 텐서 코어 가속을 못 받아 3시간에 36%로
-        # 지나치게 느렸음 - fp16으로 되돌림.
-        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_use_double_quant=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         quantization_config=bnb_config,
         device_map="auto",
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
     )
     model.config.use_cache = False
     model = prepare_model_for_kbit_training(model)
@@ -97,15 +87,6 @@ def main() -> None:
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
-    # torch_dtype=float16을 from_pretrained에 넘겨도 PEFT가 새로 만드는 LoRA
-    # A/B 가중치는 기본적으로 fp32/bf16으로 남는 경우가 있어서(정확한 원인은
-    # 라이브러리 버전마다 다름), fp16 학습 시 GradScaler가
-    # "not implemented for BFloat16"로 계속 죽었음. 학습 가능한(=LoRA) 파라미터만
-    # 골라서 명시적으로 fp16으로 캐스팅해 원천 차단.
-    for param in model.parameters():
-        if param.requires_grad and param.dtype != torch.float16:
-            param.data = param.data.to(torch.float16)
-
     dataset = build_dataset(tokenizer).train_test_split(test_size=0.05, seed=42)
 
     sft_config = SFTConfig(
@@ -117,7 +98,14 @@ def main() -> None:
         # 부족하면 여기를 늘려 재학습 (트레이드오프는 README 참고).
         num_train_epochs=1,
         learning_rate=2e-4,
-        fp16=True,  # T4 텐서 코어 가속 (bf16은 위 캐스팅 없이는 GradScaler와 충돌, 게다가 느림)
+        # fp16을 네 번 다른 방식으로 강제해봤지만(torch_dtype, LoRA 파라미터 수동
+        # 캐스팅, ACCELERATE_MIXED_PRECISION 환경변수) 매번 동일하게
+        # "not implemented for BFloat16"로 GradScaler에서 죽음 - 이 Kaggle
+        # 이미지에서 뭔가가 bf16을 강하게 고집하는 것으로 보임. bf16은 loss
+        # scaling이 필요 없어 GradScaler 자체를 안 쓰므로 이 에러 클래스를
+        # 원천적으로 피함. T4에 bf16 텐서 코어는 없어 fp16보다 느리지만
+        # (아래 max_length를 줄여 어느 정도 상쇄), 실제로 도는 쪽을 택함.
+        bf16=True,
         optim="paged_adamw_8bit",  # 8bit 페이지드 옵티마이저로 메모리 여유 확보
         logging_steps=20,
         # epoch당으로 하면 1 에폭 학습 중엔 체크포인트가 하나도 안 남아서, 세션이
@@ -128,9 +116,10 @@ def main() -> None:
         eval_strategy="steps",
         eval_steps=20,
         # loss_type="nll"(청크 없이 한 번에 logits 계산)이라 seq_len x 15만 vocab
-        # 텐서가 그대로 메모리에 올라감 - 3072에서 OOM 나서 2048로 낮춤
-        # (p90=937 토큰까지 커버, 전체의 98.1%가 안 잘림).
-        max_length=2048,
+        # 텐서가 그대로 메모리/연산량에 올라감. bf16이 텐서 코어 가속을 못 받아
+        # 원래도 느린데 거기에 더해지는 부담을 줄이려고 1536으로 낮춤
+        # (p95=1251 토큰까지 커버, 전체의 96.5%가 안 잘림).
+        max_length=1536,
         packing=False,
         dataset_text_field="text",
         # trl 기본값 loss_type="chunked_nll"은 PEFT로 감싼 모델의 forward와
