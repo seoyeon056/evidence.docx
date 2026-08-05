@@ -92,6 +92,9 @@ def main() -> None:
     sft_config = SFTConfig(
         output_dir=str(OUTPUT_DIR),
         per_device_train_batch_size=1,
+        # 명시 안 하면 기본값 8이 적용됨 - train은 batch_size=1로 빠듯하게 맞춰둔
+        # 메모리인데 eval이 8배 배치로 도는 바람에 OOM (evaluate() 중 크래시로 확인).
+        per_device_eval_batch_size=1,
         gradient_accumulation_steps=16,
         gradient_checkpointing=True,
         # 1 에폭 = 파이프라인이 끝까지 도는지 먼저 확인하는 용도. 결과물 품질이
@@ -101,10 +104,11 @@ def main() -> None:
         # fp16=True(자동 mixed-precision)는 GradScaler가 "not implemented for
         # BFloat16"로 4번 다르게 시도해도 계속 죽어서 포기함. 여기서는 bf16/fp16
         # 둘 다 안 켬 - Trainer가 autocast/GradScaler를 아예 안 쓰고, 위에서 이미
-        # fp16으로 로드한 모델을 그대로 계산하는 "순수 fp16" 방식. GradScaler
-        # 코드 경로를 안 타므로 지금까지의 크래시와 무관하고, T4 fp16 텐서 코어를
-        # 제대로 씀. 다만 loss scaling이 없어 그래디언트 underflow/NaN 위험이
-        # 있음 - 처음 몇 스텝 loss가 nan이면 이 방식을 포기하고 bf16으로 되돌릴 것.
+        # fp16으로 로드한 모델을 그대로 계산하는 "순수 fp16" 방식. 수치적으로는
+        # 안정적으로 도는 것 확인함(loss=1.499, NaN 없음). 다만 실측 속도가
+        # bf16과 거의 동일(~240초/스텝)이었음 - 병목이 텐서 코어/정밀도가 아니라
+        # 다른 곳(메모리가 거의 꽉 차서 paged_adamw_8bit가 CPU로 자주 페이징하는
+        # 것으로 추정)이라는 뜻. 지금은 더 파지 않고 이 상태로 진행.
         optim="paged_adamw_8bit",  # 8bit 페이지드 옵티마이저로 메모리 여유 확보
         logging_steps=20,
         # epoch당으로 하면 1 에폭 학습 중엔 체크포인트가 하나도 안 남아서, 세션이
