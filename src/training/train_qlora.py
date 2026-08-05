@@ -64,14 +64,14 @@ def main() -> None:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_use_double_quant=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         quantization_config=bnb_config,
         device_map="auto",
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
     )
     model.config.use_cache = False
     model = prepare_model_for_kbit_training(model)
@@ -98,14 +98,13 @@ def main() -> None:
         # 부족하면 여기를 늘려 재학습 (트레이드오프는 README 참고).
         num_train_epochs=1,
         learning_rate=2e-4,
-        # fp16을 네 번 다른 방식으로 강제해봤지만(torch_dtype, LoRA 파라미터 수동
-        # 캐스팅, ACCELERATE_MIXED_PRECISION 환경변수) 매번 동일하게
-        # "not implemented for BFloat16"로 GradScaler에서 죽음 - 이 Kaggle
-        # 이미지에서 뭔가가 bf16을 강하게 고집하는 것으로 보임. bf16은 loss
-        # scaling이 필요 없어 GradScaler 자체를 안 쓰므로 이 에러 클래스를
-        # 원천적으로 피함. T4에 bf16 텐서 코어는 없어 fp16보다 느리지만
-        # (아래 max_length를 줄여 어느 정도 상쇄), 실제로 도는 쪽을 택함.
-        bf16=True,
+        # fp16=True(자동 mixed-precision)는 GradScaler가 "not implemented for
+        # BFloat16"로 4번 다르게 시도해도 계속 죽어서 포기함. 여기서는 bf16/fp16
+        # 둘 다 안 켬 - Trainer가 autocast/GradScaler를 아예 안 쓰고, 위에서 이미
+        # fp16으로 로드한 모델을 그대로 계산하는 "순수 fp16" 방식. GradScaler
+        # 코드 경로를 안 타므로 지금까지의 크래시와 무관하고, T4 fp16 텐서 코어를
+        # 제대로 씀. 다만 loss scaling이 없어 그래디언트 underflow/NaN 위험이
+        # 있음 - 처음 몇 스텝 loss가 nan이면 이 방식을 포기하고 bf16으로 되돌릴 것.
         optim="paged_adamw_8bit",  # 8bit 페이지드 옵티마이저로 메모리 여유 확보
         logging_steps=20,
         # epoch당으로 하면 1 에폭 학습 중엔 체크포인트가 하나도 안 남아서, 세션이
@@ -116,9 +115,7 @@ def main() -> None:
         eval_strategy="steps",
         eval_steps=20,
         # loss_type="nll"(청크 없이 한 번에 logits 계산)이라 seq_len x 15만 vocab
-        # 텐서가 그대로 메모리/연산량에 올라감. bf16이 텐서 코어 가속을 못 받아
-        # 원래도 느린데 거기에 더해지는 부담을 줄이려고 1536으로 낮춤
-        # (p95=1251 토큰까지 커버, 전체의 96.5%가 안 잘림).
+        # 텐서가 그대로 메모리/연산량에 올라감 - 1536이면 96.5% 예시가 안 잘림.
         max_length=1536,
         packing=False,
         dataset_text_field="text",
