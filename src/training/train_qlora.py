@@ -11,7 +11,11 @@ Kaggle GPU 노트북에서:
 """
 
 import json
+import os
 from pathlib import Path
+
+# torch import 전에 설정해야 CUDA 할당자에 반영됨 - 단편화로 인한 OOM 완화
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import torch
 from datasets import Dataset
@@ -60,7 +64,8 @@ def main() -> None:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
+        # T4는 Turing(Compute Capability 7.5)이라 bf16 텐서 코어가 없음 - fp16 사용
+        bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_use_double_quant=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
@@ -84,19 +89,20 @@ def main() -> None:
 
     sft_config = SFTConfig(
         output_dir=str(OUTPUT_DIR),
-        # 토큰 길이 분포(p50=311, p90=937, p99=2518, max=4384) 기준 max_length=3072면
-        # 99.6% 예시가 안 잘림. T4 16GB에서 여유를 두려고 batch_size는 1로 낮추고
-        # grad_accumulation을 올려 유효 배치 크기(16)는 유지.
         per_device_train_batch_size=1,
         gradient_accumulation_steps=16,
         gradient_checkpointing=True,
         num_train_epochs=3,
         learning_rate=2e-4,
-        bf16=True,
+        fp16=True,  # T4엔 bf16 텐서 코어가 없어 fp16 사용
+        optim="paged_adamw_8bit",  # 8bit 페이지드 옵티마이저로 메모리 여유 확보
         logging_steps=20,
         save_strategy="epoch",
         eval_strategy="epoch",
-        max_length=3072,
+        # loss_type="nll"(청크 없이 한 번에 logits 계산)이라 seq_len x 15만 vocab
+        # 텐서가 그대로 메모리에 올라감 - 3072에서 OOM 나서 2048로 낮춤
+        # (p90=937 토큰까지 커버, 전체의 98.1%가 안 잘림).
+        max_length=2048,
         packing=False,
         dataset_text_field="text",
         # trl 기본값 loss_type="chunked_nll"은 PEFT로 감싼 모델의 forward와
