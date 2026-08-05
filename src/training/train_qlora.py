@@ -99,6 +99,11 @@ def main() -> None:
         max_length=3072,
         packing=False,
         dataset_text_field="text",
+        # trl 기본값 loss_type="chunked_nll"은 PEFT로 감싼 모델의 forward와
+        # 호환되지 않아 "'functools.partial' object has no attribute '__func__'"로
+        # 터짐 (trl/trainer/sft_trainer.py의 _patch_chunked_ce_lm_head). "nll"로
+        # 명시해 그 패치 경로를 아예 타지 않게 함.
+        loss_type="nll",
     )
 
     trainer = SFTTrainer(
