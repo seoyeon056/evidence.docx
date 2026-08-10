@@ -12,6 +12,7 @@ Kaggle GPU 노트북에서:
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 # torch import 전에 설정해야 CUDA 할당자에 반영됨 - 단편화로 인한 OOM 완화
@@ -20,12 +21,59 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
 from datasets import Dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainerCallback
 from trl import SFTConfig, SFTTrainer
 
 MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
-DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "processed" / "train_multitask.jsonl"
-OUTPUT_DIR = Path(__file__).resolve().parents[2] / "checkpoints" / "qlora-multitask"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_PATH = REPO_ROOT / "data" / "processed" / "train_multitask.jsonl"
+OUTPUT_DIR = REPO_ROOT / "checkpoints" / "qlora-multitask"
+GITHUB_REPO = "seoyeon056/evidence.docx"
+
+
+class GitBackupCallback(TrainerCallback):
+    """체크포인트 저장 직후 GitHub에 백업.
+
+    checkpoints/는 .gitignore 대상이라 Kaggle 세션이 완전히 죽으면(커널 재시작이
+    아니라 세션 자체 종료) 로컬 체크포인트가 통째로 사라짐 - 실제로 한 번
+    겪었음. git add -f로 강제 추가해 커밋/푸시해두면, 다음 세션에서
+    git clone/pull만 해도 이미 커밋된 파일이라 .gitignore와 무관하게 복원됨.
+    """
+
+    def on_save(self, args, state, control, **kwargs):
+        checkpoint_dir = Path(args.output_dir) / f"checkpoint-{state.global_step}"
+        try:
+            self._push(checkpoint_dir, state.global_step)
+        except Exception as e:  # 백업 실패가 학습 자체를 죽이면 안 됨
+            print(f"[git backup] failed at step {state.global_step}: {e}")
+
+    def _push(self, checkpoint_dir: Path, step: int) -> None:
+        token = os.environ.get("GITHUB_TOKEN")
+        if not token:
+            print("[git backup] GITHUB_TOKEN not set, skipping")
+            return
+
+        subprocess.run(
+            ["git", "add", "-f", str(checkpoint_dir)],
+            cwd=REPO_ROOT, check=True, capture_output=True, text=True,
+        )
+        commit = subprocess.run(
+            ["git", "commit", "-m", f"checkpoint step {step}"],
+            cwd=REPO_ROOT, check=False, capture_output=True, text=True,
+        )
+        if commit.returncode != 0 and "nothing to commit" not in commit.stdout:
+            print(f"[git backup] commit warning: {commit.stdout.strip()}")
+
+        push_url = f"https://{token}@github.com/{GITHUB_REPO}.git"
+        try:
+            subprocess.run(
+                ["git", "push", push_url, "HEAD:main"],
+                cwd=REPO_ROOT, check=True, capture_output=True, text=True,
+            )
+            print(f"[git backup] pushed checkpoint-{step}")
+        except subprocess.CalledProcessError:
+            # 에러 메시지에 push_url(토큰 포함)이 그대로 들어있을 수 있어 출력 안 함
+            print(f"[git backup] push failed at step {step} (see stderr separately if needed)")
 
 SYSTEM_PROMPT = (
     "당신은 의료 문서 작성 보조 AI입니다. "
@@ -139,6 +187,7 @@ def main() -> None:
         train_dataset=dataset["train"],
         eval_dataset=dataset["test"],
         processing_class=tokenizer,
+        callbacks=[GitBackupCallback()],
     )
 
     # OUTPUT_DIR에 체크포인트가 이미 있으면(세션 끊김 후 재실행 등) 그 지점부터 재개
