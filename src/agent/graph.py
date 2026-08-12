@@ -8,6 +8,7 @@ evidence.docx 파이프라인 뼈대.
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
+from src.agent.extract import extract_claims_from_note
 from src.agent.state import AgentState
 from src.agent.verify import ENTAILMENT_THRESHOLD, entailment_score
 
@@ -18,8 +19,12 @@ def generate_soap_note(state: AgentState) -> AgentState:
 
 
 def extract_claims(state: AgentState) -> AgentState:
-    # TODO(3주차): sLLM 프롬프팅으로 SOAP 노트를 claim 단위로 분리
-    raise NotImplementedError
+    texts = extract_claims_from_note(state["soap_note"])
+    state["claims"] = [
+        {"text": text, "source_section": "", "entailment_score": 0.0, "verified": False}
+        for text in texts
+    ]
+    return state
 
 
 def verify_claims(state: AgentState) -> AgentState:
