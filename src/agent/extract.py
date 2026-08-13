@@ -19,8 +19,9 @@ EXTRACT_MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 
 SYSTEM_PROMPT = (
     "You extract individual factual claims from a clinical note. "
-    "Split the note into short, self-contained factual statements - one claim per "
-    "distinct fact (symptom, diagnosis, medication, instruction, etc). "
+    "Each claim MUST be an exact, word-for-word substring copied directly from the "
+    "note - do not paraphrase or rewrite. One claim per distinct fact (symptom, "
+    "diagnosis, medication, instruction, etc). "
     "Respond with a JSON array of strings only, no other text."
 )
 

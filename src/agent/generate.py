@@ -6,6 +6,7 @@
 않고도 바로 좋아짐.
 """
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -15,7 +16,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.prompts import SYSTEM_PROMPT
 
-MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
+# 로컬(GPU 없는 환경)에서 UI/파이프라인만 빠르게 확인할 때는
+# EVIDENCE_DOCX_MODEL=Qwen/Qwen2.5-0.5B-Instruct 같은 작은 모델로 덮어쓸 수 있음
+MODEL_NAME = os.environ.get("EVIDENCE_DOCX_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 ADAPTER_PATH = Path(__file__).resolve().parents[2] / "checkpoints" / "qlora-multitask" / "final"
 
 

@@ -18,6 +18,42 @@ from src.agent.graph import build_graph
 graph = build_graph()
 
 
+def build_highlighted_note(note: str, claims: list[dict]) -> list[tuple[str, str | None]]:
+    """근거 약한 claim의 실제 위치를 노트 원문에서 찾아 하이라이트 구간을 만든다.
+
+    extract.py가 claim을 verbatim(원문 그대로) 추출하도록 프롬프트했지만, 작은
+    모델은 완벽히 안 지킬 수 있어 note.find()로 못 찾으면(파라프레이즈됐으면)
+    그 claim은 노트 내 하이라이트에서만 조용히 빠짐 (② 리뷰 목록에는 그대로 남음).
+    """
+    spans = []
+    for claim in claims:
+        if claim["verified"]:
+            continue
+        idx = note.find(claim["text"])
+        if idx == -1:
+            continue
+        spans.append((idx, idx + len(claim["text"])))
+    spans.sort()
+
+    merged: list[tuple[int, int]] = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+
+    chunks: list[tuple[str, str | None]] = []
+    cursor = 0
+    for start, end in merged:
+        if start > cursor:
+            chunks.append((note[cursor:start], None))
+        chunks.append((note[start:end], "근거 약함"))
+        cursor = end
+    if cursor < len(note):
+        chunks.append((note[cursor:], None))
+    return chunks
+
+
 def start_analysis(dialogue: str):
     if not dialogue.strip():
         raise gr.Error("진료 대화를 입력해주세요.")
@@ -35,7 +71,8 @@ def start_analysis(dialogue: str):
     # interrupt_before=["human_review"]라 여기서 human_review 직전까지만 실행되고 멈춤
     result = graph.invoke(initial_state, config)
 
-    highlighted = [
+    note_highlighted = build_highlighted_note(result["soap_note"], result["claims"])
+    claims_highlighted = [
         (claim["text"], "근거 약함" if not claim["verified"] else None)
         for claim in result["claims"]
     ]
@@ -45,7 +82,7 @@ def start_analysis(dialogue: str):
         if weak_count
         else "모든 claim이 근거검증을 통과했습니다."
     )
-    return result["soap_note"], highlighted, status, thread_id
+    return note_highlighted, claims_highlighted, status, thread_id
 
 
 def approve_review(thread_id: str):
@@ -71,9 +108,12 @@ with gr.Blocks(title="evidence.docx") as demo:
     start_btn = gr.Button("분석 시작", variant="primary")
 
     with gr.Row():
-        note_output = gr.Textbox(label="① SOAP 노트 초안", lines=10)
+        note_output = gr.HighlightedText(
+            label="① SOAP 노트 초안 (약한 근거 부분 하이라이트)",
+            color_map={"근거 약함": "red"},
+        )
         review_output = gr.HighlightedText(
-            label="② 근거검증 리뷰 (약한 근거만 하이라이트)",
+            label="② 근거검증 리뷰 (claim별 목록)",
             color_map={"근거 약함": "red"},
         )
 
