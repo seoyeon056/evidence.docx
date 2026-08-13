@@ -9,13 +9,14 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from src.agent.extract import extract_claims_from_note
+from src.agent.generate import generate_note, generate_summary
 from src.agent.state import AgentState
 from src.agent.verify import ENTAILMENT_THRESHOLD, entailment_score
 
 
 def generate_soap_note(state: AgentState) -> AgentState:
-    # TODO(2주차): 멀티태스크 QLoRA sLLM으로 대화 -> SOAP 노트 생성
-    raise NotImplementedError
+    state["soap_note"] = generate_note(state["dialogue"])
+    return state
 
 
 def extract_claims(state: AgentState) -> AgentState:
@@ -47,8 +48,11 @@ def human_review(state: AgentState) -> AgentState:
 
 
 def generate_patient_summary(state: AgentState) -> AgentState:
-    # TODO(2주차): 검증 통과한 claim만으로 환자용 평이체 요약 생성
-    raise NotImplementedError
+    # 검증 통과한 claim만으로 요약 - weak_claims는 의료진이 수정한 뒤
+    # review_approved로 넘어오므로, 그 시점 state["claims"]의 verified 값을 기준으로 함
+    verified_text = "\n".join(c["text"] for c in state["claims"] if c["verified"])
+    state["patient_summary"] = generate_summary(verified_text)
+    return state
 
 
 def route_after_review(state: AgentState) -> str:

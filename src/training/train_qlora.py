@@ -24,6 +24,8 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainerCallback
 from trl import SFTConfig, SFTTrainer
 
+from src.prompts import SYSTEM_PROMPT
+
 MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = REPO_ROOT / "data" / "processed" / "train_multitask.jsonl"
@@ -74,12 +76,6 @@ class GitBackupCallback(TrainerCallback):
         except subprocess.CalledProcessError:
             # 에러 메시지에 push_url(토큰 포함)이 그대로 들어있을 수 있어 출력 안 함
             print(f"[git backup] push failed at step {step} (see stderr separately if needed)")
-
-SYSTEM_PROMPT = (
-    "당신은 의료 문서 작성 보조 AI입니다. "
-    "[NOTE] 태그가 붙으면 진료 대화를 SOAP 형식 노트로 작성하고, "
-    "[SUMMARY] 태그가 붙으면 의료 텍스트를 환자가 이해하기 쉬운 말로 풀어씁니다."
-)
 
 
 def load_examples(path: Path = DATA_PATH) -> list[dict]:
