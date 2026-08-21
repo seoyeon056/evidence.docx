@@ -10,7 +10,11 @@ from functools import lru_cache
 from sentence_transformers import CrossEncoder
 
 NLI_MODEL_NAME = "cross-encoder/nli-deberta-v3-base"
-ENTAILMENT_THRESHOLD = 0.5  # TODO(3주차): 실제 claim 샘플로 임계값 튜닝 필요
+# scripts/tune_threshold.py로 검증함: ACI-Bench valid.csv 기반 48개 라벨링
+# 테스트셋(같은 encounter 문장=true, 다른 encounter 문장=false)에서 0.4~0.5가
+# 정확도 최고(81.2%)이자 "위험한 오류"(근거 없는 claim을 검증됨으로 오판)가
+# 가장 적은 구간(FP=1, 0.9까지 올려도 그대로) - 0.5 유지가 최적.
+ENTAILMENT_THRESHOLD = 0.5
 
 # cross-encoder/nli-deberta-v3-base의 라벨 순서 (config.id2label 확인함)
 _ENTAILMENT_INDEX = 1

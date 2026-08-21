@@ -56,6 +56,10 @@ AI가 생성한 진료 노트(SOAP)에서 근거가 약한 문장을 자동으�
 - 근거검증: 경량 사전학습 NLI 모델 (제로샷)
 - 데모: Gradio
 
+## 알려진 한계
+
+- **근거검증의 정형화된 문구 오탐**: `scripts/tune_threshold.py`로 임계값을 검증하는 과정에서, "OO is a pleasant N-year-old..." 같은 정형화된 환자 소개 문장이나 "seen in consultation at the request of Dr." 같은 상투적 문구는 NLI 모델이 자주 헷갈려함 (구체적 정보가 적어서로 추정). 임계값 조정으로는 해결 안 되는 구조적 한계 - claim 추출 시 더 구체적인 문장 단위로 쪼개거나, 임상 도메인 특화 NLI 모델로 교체하면 개선될 수 있음.
+
 ## 시작하기
 
 ```bash
