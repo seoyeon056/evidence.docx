@@ -1,8 +1,8 @@
 """
-evidence.docx 파이프라인 뼈대.
+evidence.docx 파이프라인.
 
-진료 대화 -> SOAP 노트 -> claim 추출 -> 근거검증(NLI) -> 의료진 리뷰(interrupt)
--> 환자용 요약. 각 노드는 2주차(파인튜닝)/3주차(근거검증) 결과물로 채워질 스텁입니다.
+진료 대화 -> SOAP 노트(generate.py, QLoRA 어댑터) -> claim 추출(extract.py) ->
+근거검증(verify.py, NLI 제로샷) -> 의료진 리뷰(interrupt) -> 환자용 요약(generate.py).
 """
 
 from langgraph.checkpoint.memory import MemorySaver

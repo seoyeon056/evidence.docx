@@ -34,12 +34,14 @@ AI가 생성한 진료 노트(SOAP)에서 근거가 약한 문장을 자동으�
 
 ## 실행 일정 (4주 로드맵)
 
-| 주차 | 목표 |
-|---|---|
-| 1주차 | 데이터 전처리(ACI-Bench, MTS-Dialog, PLABA), 멀티태스크 instruction 포맷 설계, 환경 셋업 |
-| 2주차 | 멀티태스크 QLoRA 파인튜닝(SOAP 생성 + 환자용 요약 동일 adapter), 1차 평가 |
-| 3주차 | 근거검증 모듈(claim 추출 프롬프트, NLI entailment 임계값 튜닝) |
-| 4주차 | Gradio 웹 데모 통합, 버그 수정, 한국어 few-shot 데모 예시, 발표자료 |
+| 주차 | 목표 | 상태 |
+|---|---|---|
+| 1주차 | 데이터 전처리(ACI-Bench, MTS-Dialog, PLABA), 멀티태스크 instruction 포맷 설계, 환경 셋업 | ✅ 완료 |
+| 2주차 | 멀티태스크 QLoRA 파인튜닝(SOAP 생성 + 환자용 요약 동일 adapter), 1차 평가 | ✅ 완료 |
+| 3주차 | 근거검증 모듈(claim 추출 프롬프트, NLI entailment 임계값 튜닝) | 근거검증/claim추출 완료, 임계값 튜닝 남음 |
+| 4주차 | Gradio 웹 데모 통합, 버그 수정, 한국어 few-shot 데모 예시, 발표자료 | 데모 통합 완료, 한국어 예시/발표자료 남음 |
+
+**2주차 학습 결과**: Qwen2.5-7B-Instruct, AWS g5.xlarge(A10G)에서 1 epoch, 35분 38초. `train_loss` 1.50 → 1.24, `mean_token_accuracy` 68.9% → 74.3%. 어댑터는 [`checkpoints/qlora-multitask/final/`](checkpoints/qlora-multitask/final/)에 저장.
 
 ## 데이터
 
@@ -66,4 +68,5 @@ pip install -r requirements.txt
 python -m src.data.download        # ACI-Bench, MTS-Dialog, PLABA
 python -m src.data.preprocess       # 멀티태스크 instruction 포맷으로 병합
 python -m src.training.train_qlora  # QLoRA 파인튜닝 (GPU 필요)
+python app.py                      # Gradio 데모 실행 (checkpoints/.../final/ 자동 로드)
 ```
