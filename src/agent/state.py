@@ -8,6 +8,11 @@ class Claim(TypedDict):
     verified: bool
 
 
+class MedicalCode(TypedDict):
+    code: str
+    name: str
+
+
 class AgentState(TypedDict):
     dialogue: str
     soap_note: str
@@ -15,3 +20,5 @@ class AgentState(TypedDict):
     weak_claims: list[Claim]
     review_approved: bool
     patient_summary: str
+    disease_codes: list[MedicalCode]
+    medication_codes: list[MedicalCode]

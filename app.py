@@ -67,6 +67,8 @@ def start_analysis(dialogue: str):
         "weak_claims": [],
         "review_approved": False,
         "patient_summary": "",
+        "disease_codes": [],
+        "medication_codes": [],
     }
     # interrupt_before=["human_review"]라 여기서 human_review 직전까지만 실행되고 멈춤
     result = graph.invoke(initial_state, config)
@@ -85,6 +87,12 @@ def start_analysis(dialogue: str):
     return note_highlighted, claims_highlighted, status, thread_id
 
 
+def _format_codes(codes: list[dict]) -> str:
+    if not codes:
+        return "(매칭된 항목 없음)"
+    return "\n".join(f"- `{c['code']}` {c['name']}" for c in codes)
+
+
 def approve_review(thread_id: str):
     if not thread_id:
         raise gr.Error("먼저 '분석 시작'을 눌러주세요.")
@@ -92,7 +100,11 @@ def approve_review(thread_id: str):
     config = {"configurable": {"thread_id": thread_id}}
     graph.update_state(config, {"review_approved": True})
     result = graph.invoke(None, config)
-    return result["patient_summary"]
+    codes_md = (
+        f"**질병코드**\n{_format_codes(result['disease_codes'])}\n\n"
+        f"**약품코드**\n{_format_codes(result['medication_codes'])}"
+    )
+    return result["patient_summary"], codes_md
 
 
 with gr.Blocks(title="evidence.docx") as demo:
@@ -120,7 +132,9 @@ with gr.Blocks(title="evidence.docx") as demo:
     review_status = gr.Markdown()
     approve_btn = gr.Button("검토 완료 → 환자용 요약 생성", variant="primary")
 
-    summary_output = gr.Textbox(label="③ 환자용 쉬운 설명 요약", lines=6)
+    with gr.Row():
+        summary_output = gr.Textbox(label="③ 환자용 쉬운 설명 요약", lines=6)
+        codes_output = gr.Markdown(label="④ 질병코드·약품코드 (KCD/약가마스터 매칭)")
 
     start_btn.click(
         start_analysis,
@@ -130,7 +144,7 @@ with gr.Blocks(title="evidence.docx") as demo:
     approve_btn.click(
         approve_review,
         inputs=[thread_id_state],
-        outputs=[summary_output],
+        outputs=[summary_output, codes_output],
     )
 
 
